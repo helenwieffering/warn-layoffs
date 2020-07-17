@@ -1,0 +1,444 @@
+---
+title: "WARN Scrape"
+author: "Helen Wieffering"
+date: "3/30/2020"
+output: html_document
+---
+
+# THIS DOCUMENT IS MEANT TO BE MY CLEANED UP, REPRODUCIBLE VERSION
+
+# My data is scraped -- and therefore, current -- as of March 30, 2020
+
+In brief: we want to scrape the WARN postings on the state website. This will tell us which companies (of 100+ employees) are planning layoffs in the economic downturn related to covid-19. Sarah gave me some code to get started on this, a lot of which I copied below. Her full instructions are in a file called `warn-scrape-part1.html`
+
+```{r message=FALSE}
+
+# load libraries
+library(tidyverse)   #for everything! 
+library(readr)       #for good reading of tsv
+library(rvest)       #this is to read the html files.
+library(stringr)     #this is to get rid of extra whitespace and work with strings
+library(lubridate)   #this is to convert text to dates
+library(ggplot2)     #for quick viz
+
+```
+
+Here's the link that houses the data. Note the different 'headers' in the URL. 
+(to do - describe in more detail how we got to this link)[https://www.azjobconnection.gov/ada/mn_warn_dsp.cfm?securitysys=on&start_row=1&max_rows=25&orderby=noticeDateSort%20DESC&choice=1]
+
+/NOTE: now that i've sorted it by date, with the most recent notices at the top, I shouldn't need to ever run all 16 pages again. I'd probably be fine just pulling down pages 1 and 2 and making sure I discard any duplicates from results I already have./ I should write additional code to do this.
+
+If you page through the results, you see two things: a maximum of 25 rows can be displayed at a time. Typing over the 25 in the URL doesn't change that. In fact, it appears to be one giant table - with many rows. Page 2 shows rows 26-50, for example, and page 3 shows rows 51-75. There are a total of 379 rows over 16 pages as of March 30, 2020.
+Click the column header that says *Notice Date*, then click it again. This should sort all results in descending order by time.
+
+Our headers are set to the following:
+```{r, eval = FALSE}
+
+securitysys = on
+start_row = 1
+max_row = 25
+orderby = noticeDateSort%20DESC
+choice = 1
+
+```
+
+I'll download the first page of results. THIS IS A TEST RUN. All my code chunks that hit the website will have eval set to false.
+
+```{r, eval = FALSE, message = FALSE}
+
+download.file( "https://www.azjobconnection.gov/ada/mn_warn_dsp.cfm?securitysys=on&start_row=1&max_rows=25&orderby=noticeDateSort%20DESC&choice=1", "warn_listing/page001.html" )
+
+```
+
+We only need to change `start_row` when we're looping between pages. Everything else stays the same. 
+
+IMPORTANT: We know from manually examining the website that there are 17 pages of data.
+
+```{r, eval = FALSE, message = FALSE}
+
+url <- "https://www.azjobconnection.gov/ada/mn_warn_dsp.cfm?securitysys=on&start_row=1&max_rows=25&orderby=noticeDateSort%20DESC&choice=1"
+
+# Get the pages: 
+      for (p in  2:17) {
+          
+          # set variables
+          new_start_row <- ( (p-1) * 25 + 1 ) 
+          max_rows <- 25
+          
+          # build the url from there by using str_replace for start_row=1 
+          # something like this:
+          new_url <- str_replace( url, 
+                                  "(start_row=)(1)", # regex pattern
+                                  paste0("\\1", new_start_row ) ) # replacement 
+          download.file (new_url, 
+                         paste0 ("warn_listing/page", 
+                                  sprintf("%03d", p),
+                                 ".html"),
+                         method="auto" )
+          Sys.sleep(1)
+          
+      }
+
+```
+
+# Parsing the pages
+
+Start by reading in a single page using rvest:
+
+Note: html_table looks cool and at first glance appears to save a lot of work. But since we need to get the URL in each row manually anyway, it doesn't save us any time - we may as well parse everything manually.
+
+Try parsing the data on a single page.
+
+```{r}
+
+# read in a single page
+my_html <- read_html( "warn_listing/page001.html" )
+
+# using xpath
+all_rows <- html_nodes( my_html, xpath='//div[2]/table/tr' )
+
+# iterate through first three rows to get a feel for it. 
+html_children( all_rows[ 1 ] ) # row 1 has the column headers
+html_children( all_rows[ 2 ] ) # row 2 has ... I'm not sure, but looks like a header column/formatting
+html_children( all_rows[ 3 ] ) # now we see <td> elements, or cells in a table.
+
+# since we're defining our own headers, we can scrap the first two rows
+n = length( all_rows )
+data_rows <- all_rows[ 3:n ]
+
+#now get the rest of the info. 
+html_node( data_rows[ 1 ], xpath="td[1]" ) %>% html_text( )
+
+```
+
+
+Beginning step of parsing: create a table to hold the data!
+```{r}
+
+row_data <- tibble(
+  
+  page_num = character( ),
+  row_num = numeric( ),
+  full_link = character( ),
+  company = character( ),
+  co_hq_city = character( ),
+  co_hq_zip = character( ),
+  labor_area = character( ),
+  notice_date_txt = character( )
+  
+)
+
+```
+
+# Parsing the data in a loop
+
+Note again that the loop range is hard coded based on my manual analysis of how many pages are on the site. In a future iteration of this code, I should automate that process.
+
+```{r}
+
+# define parent url
+parent_url <- "https://www.azjobconnection.gov/ada/"
+
+# define data frame
+row_data <- tibble(
+  
+  page_num = character( ),
+  row_num = numeric( ),
+  full_link = character( ),
+  company = character( ),
+  co_hq_city = character( ),
+  co_hq_zip = character( ),
+  labor_area = character( ),
+  notice_date_txt = character( )
+  
+)
+
+# iterate through 16 html pages
+for ( p in 1:17 ) {
+  
+  # parse page items
+  my_html = read_html( paste0 ("warn_listing/page", sprintf( "%03d", p ), ".html" ) )
+  
+  all_rows <- html_nodes( my_html, xpath = '//div[2]/table/tr' )
+  
+  n = length( all_rows )
+  
+  data_rows = all_rows[ 3:n ]
+  
+  new_start_row <- ( (p-1) * 25 + 1 ) 
+  
+  num_data_rows <- length( data_rows )
+  
+  # parse data_rows - begins at a multiple of 25 (plus 1)
+  for ( i in 1:num_data_rows ) {
+  
+    j <- new_start_row + i - 1
+    
+    row_data[ j, 1 ] <- paste0 ("page", sprintf( "%03d", p ), ".html")
+      
+    row_data[ j, 2 ] <- j
+      
+    # quick two-step URL extraction
+    row_url <- html_node( data_rows[ i ], xpath = "td[1]/span/a/@href" ) %>% html_text( )
+    row_data[ j, 3 ]  <- paste0( parent_url, str_extract( row_url, "^.{16}(id=)\\d{1,4}" ) )
+      
+    row_data[ j, 4 ] <- html_node( data_rows[ i ], xpath = "td[1]" ) %>% html_text( )
+      
+    row_data[ j, 5 ] <- html_node( data_rows[ i ], xpath = "td[2]" ) %>% html_text( )
+      
+    row_data[ j, 6 ] <- html_node( data_rows[ i ], xpath = "td[3]" ) %>% html_text( )
+      
+    row_data[ j, 7 ] <- html_node( data_rows[ i ], xpath = "td[4]" ) %>% html_text( )
+      
+    row_data[ j, 8 ] <- html_node( data_rows[ i ], xpath="td[5]" ) %>% html_text( )
+      
+  
+  } 
+  
+  # ta-da!
+  
+}
+
+```
+
+A little bit of clean-up:
+```{r}
+
+# add an id column + make the date column a datetime datatype
+
+warn_data <- row_data %>% 
+    mutate( id = str_extract( full_link, "\\d{1,4}"),
+            notice_date = mdy( notice_date_txt ) ) %>% 
+    select( -notice_date_txt )
+
+# save without overwriting past results
+date_curr = today( )
+
+dir.create( paste0(
+  "output/",
+  date_curr ) ) 
+
+save_location = paste0(
+  "output/",
+  date_curr,
+  "/warn_data.csv"
+)
+
+write_csv( warn_data, save_location )
+
+```
+
+
+Hooray! Half is done. Now let's prep for the next step: saving the individual WARN URLs.
+
+#Part II - downloading every WARN notice
+
+```{r}
+
+# create a table with ONLY the links we need
+company_url <- row_data %>% select( full_link )
+
+# check that all the links are unique -- they are
+nrow( company_url )
+company_url %>% summarise( n_urls = n_distinct( full_link ) )
+
+```
+
+Write a loop to download these urls. We'll need to iterate through our list of links, and save the page with a filepath that reflects the id.
+
+```{r, eval = FALSE, message = FALSE }
+
+end <- nrow( company_url )
+
+for ( u in 1:end ) {
+
+  my_url <- company_url[ u, 1 ] %>% as.character( )
+  
+  id <- str_extract( my_url, '(id=)\\d{1,4}' )
+  
+  download.file( my_url, 
+                 paste0 ("company_urls/warn/", id ), method="auto")
+  
+  Sys.sleep(0.75)
+  
+}
+
+
+```
+
+#Parsing the WARN notices
+
+It seems like, in this case, html_table will be great! (Since we don't need to do any extra manual parsing.) All I'll do is pivot the data once it's parsed, and add an id column.
+
+One additonal challenge is that I can't walk through the pages in a sequential order as I did before. I get around that using list.files( ), which lets me iterate through all the files in the folder.
+
+```{r}
+
+# define data frame
+warn_detail <- tibble(
+  
+  page_name = character( ),
+  row_num = numeric( ),
+  id = character( ), # there are no leading zeros, so treat it as a numeral
+  company = character( ),
+  co_st_address = character( ),
+  co_hq_city = character( ),
+  co_hq_state = character( ),
+  co_hq_zip = character( ),
+  num_employees_affected = numeric( ),
+  other_notes = character( )
+  
+)
+
+# create a list of files
+file_list <- list.files( path= "company_urls/warn" )
+
+n <- length( file_list )
+
+# loop through every scraped file to parse the data
+for (i in 1:n ) {
+  
+  file_name <- file_list[ i ] %>% as.character( )
+  
+  my_html <- read_html( paste0( "company_urls/warn/", file_name ) )
+  
+  my_table <- html_table( html_nodes( my_html, "table" )[[2]])
+  
+  table_length <- nrow( my_table )
+  
+  if( table_length < 7 ) {
+    r = tribble( 
+      ~X1, ~X2,
+      "Other Notes", "" )
+    
+    my_table <- bind_rows( my_table, r )
+  }
+  
+  warn_row <- my_table %>%
+    pivot_wider( names_from = X1, values_from = X2 ) %>%
+    mutate(
+      id = str_extract(file_name, "\\d{1,4}"),
+      page_name = file_name,
+      row_num = i,
+      num_employees_affected = `Number of employees affected` %>% as.numeric( ),
+      other_notes = `Other Notes`
+    ) %>% 
+    # re-order and rename columns to match data-frame
+    select(
+      page_name, 
+      row_num, 
+      id, 
+      company = `Company name`,
+      co_st_address = `Street address`,
+      co_hq_city = `City`,
+      co_hq_state = `State`,
+      co_hq_zip = `Zip code`,
+      num_employees_affected,
+      other_notes
+    )
+  
+  warn_detail <- bind_rows( warn_detail, warn_row  )
+  
+}
+
+# woohoo!
+
+# make sure to save your results:
+date_curr = today( )
+
+save_location = paste0(
+  "output/",
+  date_curr,
+  "/warn_detail.csv"
+)
+
+write_csv( warn_detail, save_location )
+
+```
+
+#Review
+
+Give it a look:
+```{r}
+
+warn_data_complete <- warn_data %>% 
+  left_join( warn_detail, by = c( "id" = "id" ) ) %>% 
+  select(
+    id,
+    results_page = page_num, # page number of results on WARN website
+    page_name, # id number within URL for detailed WARN
+    full_link,
+    company = company.x,
+    co_hq_city = co_hq_city.x,
+    co_hq_state,
+    co_hq_zip = co_hq_zip.x,
+    labor_area,
+    notice_date,
+    num_employees_affected,
+    other_notes
+  )
+
+# save without overwriting past results
+save_location = paste0(
+  "output/",
+  date_curr,
+  "/warn_data_complete.csv"
+)
+
+write_csv( warn_data_complete, save_location )
+
+```
+ 
+# Preview of analysis
+
+```{r}
+
+warn_by_yr <- warn_data_complete %>%
+  mutate( m = month( notice_date ),
+          y = year( notice_date ),
+          mo_yr = paste(m, y, sep = "-" ) ) %>% 
+  group_by( m, y, mo_yr ) %>%
+  summarise(
+    notices = n( ),
+    distinct_companies = n_distinct( company ),
+    employees_affected = sum( num_employees_affected ),
+  ) %>%
+  arrange( desc( y ), desc( m ) )
+
+```
+
+Most employees, companies experiencing layoffs in a single month:
+
+``` {r }
+
+warn_data_complete %>% 
+  mutate( m = month( notice_date ),
+          y = year( notice_date ),
+          mo_yr = paste(m, y, sep = "-" ) ) %>% 
+  group_by( mo_yr ) %>%
+  summarise(
+    notices = n( ),
+    distinct_companies = n_distinct( company ),
+    employees_affected = sum( num_employees_affected )
+  ) %>% 
+  arrange( desc( distinct_companies ) )
+
+```
+
+
+
+Who was laid off in 2020 so far?
+```{r}
+
+warn_data_complete %>% 
+  filter( year( notice_date ) == 2020 ) %>% 
+  mutate( m = month( notice_date ),
+          y = year( notice_date ),
+          mo_yr = paste(m, y, sep = "-" ) ) %>% 
+  select( company, num_employees_affected, mo_yr, notice_date ) %>% 
+  arrange( desc( num_employees_affected ) )
+
+```
+
+
+

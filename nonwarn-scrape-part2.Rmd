@@ -1,0 +1,76 @@
+---
+title: "Non-WARN Scrape"
+author: "Helen Wieffering"
+date: "4/1/2020"
+output: html_document
+---
+
+The purpose of this is to pull down the pages for non-warn data.
+
+```{r message=FALSE}
+
+# load libraries
+library(tidyverse)   #for everything! 
+library(readr)       #for good reading of tsv
+library(readxl)      #for reading excel
+library(rvest)       #this is to read the html files.
+library(stringr)     #this is to get rid of extra whitespace and work with strings
+library(lubridate)   #this is to convert text to dates
+library(ggplot2)     #for quick viz
+
+```
+
+First, I used the Scraper extension in google chrome to scrape the links and general non-warn data. But I still need to access those saved links to pull down the non-warn detail.
+
+```{r}
+
+nonwarn_data <- read_excel( "nonwarn-scrape-part1.xlsx", sheet = 1 )
+
+
+```
+
+
+
+```{r}
+
+# create a table with ONLY the links we need
+company_url <- nonwarn_data %>% 
+  select( full_link ) %>% 
+  mutate( clean_link = paste0( "https://www.azjobconnection.gov/ada/mn_warn_dsp.cfm?",
+                              str_extract( full_link, '(id=)\\d{1,4}' ) )
+          )
+
+# check that all the links are unique -- they are
+nrow( company_url )
+company_url %>% summarise( n_urls = n_distinct( clean_link ) )
+
+
+```
+
+Write a loop to download these urls.
+
+```{r, eval = FALSE}
+
+end <- nrow( company_url )
+
+# we'll only need to iterate through our list of links, and save the page with a filepath that reflects the id
+
+for ( u in 1:end ) {
+
+  my_url <- company_url[ u, 2 ] %>% as.character( )
+  
+  id <- str_extract( my_url, '(id=)\\d{1,4}' )
+  
+  download.file( my_url, 
+                 paste0 ("company_urls/nonwarn/", id ), method="auto")
+  
+  Sys.sleep(0.75)
+  
+}
+
+```
+
+
+#PARSE
+
+

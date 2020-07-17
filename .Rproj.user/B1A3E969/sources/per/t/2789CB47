@@ -1,0 +1,25 @@
+{
+    "collab_server" : "",
+    "contents" : "",
+    "created" : 1586837317500.000,
+    "dirty" : false,
+    "encoding" : "UTF-8",
+    "folds" : "",
+    "hash" : "1457093617",
+    "id" : "2789CB47",
+    "lastKnownWriteTime" : 1586839885,
+    "last_content_update" : 1586839890002,
+    "path" : "~/Desktop/data-projects/cronkite-data-journalism/warn-layoffs/warn-layoffs-explainer.Rmd",
+    "project_path" : "warn-layoffs-explainer.Rmd",
+    "properties" : {
+        "cursorPosition" : "440,0",
+        "scrollLine" : "427"
+    },
+    "read_only" : false,
+    "read_only_alternatives" : [
+    ],
+    "relative_order" : 1,
+    "source_on_save" : false,
+    "source_window" : "",
+    "type" : "r_markdown"
+}

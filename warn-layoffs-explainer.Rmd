@@ -43,7 +43,7 @@ But before we jump into scraping, let's examine the URL and the underlying data.
 
 https://www.azjobconnection.gov/ada/mn_warn_dsp.cfm?securitysys=on&start_row=26&max_rows=25&orderby=employer&choice=1
 
-When I page through the site, I see that a maximum of 25 layoff notices can be displayed at one time. The URL makes that clear: `max_rows` is set to 25. With some websites, typing over the 25 with a larger number will trick the system to display all the data, but here it doesn't work. The website appears to be one giant table divided into 25-row sections: Page 2 shows rows 26-50, for example, page 3 shows 51-75, and so on. 
+When I page through the site, I see that a maximum of 25 layoff notices can be displayed at one time. The URL makes that clear: `max_rows` is set to 25. With some websites, typing over the 25 with a larger number will trick the system to display all the data, but here it doesn't work. The website appears to be one giant table divided into 25-row sections: Page 2 shows rows 26-50, page 3 shows 51-75 and so on. 
 
 As of April 13, 2020, there are 420 rows - 420 layoff notices - spread over 17 pages.
 
@@ -103,7 +103,7 @@ url <- "https://www.azjobconnection.gov/ada/mn_warn_dsp.cfm?securitysys=on&start
           # set new start row
           new_start_row <- ( (p-1) * 25 + 1 ) 
           
-          # build the url by using str_replace for start_row=1 
+          # build the url by using str_replace to adjust the start_row 
           new_url <- str_replace( url, 
                                   "(start_row=)(1)", # regex pattern
                                   paste0( "\\1", new_start_row ) ) # replacement 
@@ -153,7 +153,7 @@ html_node( data_rows[ 1 ], xpath = 'td[1]' ) %>% html_text( )
 Note: `html_table( )` is another neat command in rvest that converts html tables into dataframes. But since we need to get the URL in each row manually, it doesn't save us any time - we may as  well parse every column.
 
 ### Parsing the data in a loop
-We can automate the data parsing now that we understand how to access the data in each column.
+We can automate the parsing now that we understand how to access the data in each column.
 
 Begin by creating a table to hold our results:
 ```{r}
@@ -262,7 +262,7 @@ write_csv( warn_data, save_location )
 
 ```
 
-Half our work is done. Now let's prep for the next step: scraping data from the detailed WARN notices. These are stored in a separate list of URLs and conveniently saved in our `warn_data` table in the `full_link` column.
+Half our work is done. Now let's prep for the next step: scraping data from the detailed WARN notices. These are conveniently saved in our `warn_data` table in the `full_link` column.
 
 ## Part 2: Scraping the detailed layoff data
 
@@ -275,7 +275,7 @@ company_url <- row_data %>% select( full_link )
 
 ```
 
-Similar to before, we can write a loop to download these webpages. We'll iterate through our list of links, and save the page with a filepath that reflects the WARN ID. Here, since we have 420 requests instead of 17, I've shortened the 'sleeping' window to 0.75 seconds.
+Similar to before, we can write a loop to download these webpages. We'll iterate through our list of links and save the page with a filepath that reflects the WARN ID. Here, since we have 420 requests instead of 17, I've shortened the 'sleeping' window to 0.75 seconds.
 
 ```{r, eval = FALSE, message = FALSE }
 
@@ -401,7 +401,7 @@ write_csv( warn_detail, save_location )
 
 ## Review
 
-Let's combine the two sets of data - `warn_data` and `warn_detail` into one table about layoffs.
+Let's combine the two sets of data - `warn_data` and `warn_detail` - into one table about layoffs.
 ```{r}
 
 warn_data_complete <- warn_data %>% 
@@ -432,7 +432,7 @@ write_csv( warn_data_complete, save_location )
 
 ```
  
-We're done. Now, we have over 400 records of layoff notices dating back to 2010, which is when the first notice was posted online. We can group them together by month and year.
+We're done. Now, we have over 400 records of layoffs dating back to 2010, which is when the first notice was posted online. We can group them together by month and year.
 
 Below is a list of monthly layoffs, ranked by most employees impacted. March 2020 tops the list by far; April is second on the list, though it's only halfway through. Putting the two months together, we can estimate that about 9,000 people have been impacted by layoffs or furloughs in Arizona since covid-19 sparked a pandemic. It's a sobering record — and one that still leaves out entrepreneurs, small businesses and government employees on furlough.
 
@@ -470,7 +470,7 @@ There's so much more to analyze - but for now, we'll adjourn.
 
 Sarah Cohen generously got me started on this by sharing code that took through me most of Part 1. I used what I learned from reading her code to write Part 2 and assemble this tutorial.
 
-The Arizona Deptartment of Economic Security also has an online listing of "non-WARN" notices — companies not bound by the WARN Act but who choose to submit layoff notices to the state anyhow. They are issued much less frequently, and this analysis excludes them.
+The Arizona Department of Economic Security also has an online listing of "non-WARN" notices — companies not bound by the WARN Act but who choose to submit layoff notices to the state anyhow. They are issued much less frequently, and this analysis excludes them.
 
 It's worth noting, too, that while March and April are record-setting months for layoffs in our dataset, we don't have online records going back to the housing crash of 2008. With this data alone, we can't tell how these numbers compare to the last great recession.
 

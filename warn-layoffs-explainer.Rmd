@@ -24,29 +24,26 @@ library(knitrBootstrap)   # for pretty themes
 
 By late March, two weeks into the official pandemic, requests for unemployment assistance were setting records in Arizona. Gov. Doug Ducey issued orders to "stay home, stay healthy, stay connected" on March 30, and most restaurants and stores had closed down. Still, it was unclear which industries and employers were laying off workers due to covid-19.
 
-This walkthrough gathers the data to help answer those questions via a scraping exercise in R. We'll go from a clunky government website to a single data table that shows the business impact, still ongoing, of coronavirus over time.
+This walkthrough gathers the data to help answer that question via a scraping exercise in R. We'll go from a clunky government website to a single data table that shows the business impact, still ongoing, of coronavirus over time.
 
 ### WARN listings
 
-Companies that have at least 100 employees are required by law to submit notices to the state under the Worker Adjustment and Retraining (WARN) Act. There are other specifics under the law, but the 100-employee rule broadly holds - and some companies with less than 100 employees issue notices, too. WARN does not apply to government agencies.
+Companies that have at least 100 employees are required by law to submit notices to the state under the Worker Adjustment and Retraining Notification (WARN) Act. There are other specifics under the law, but the 100-employee rule broadly holds - and some companies with less than 100 employees issue notices, too. WARN does not apply to government agencies.
 
 Here's how the state organizes listings online:
 
 ![*The WARN homepage in Arizona*](WARNhomepage.png)
 
-The website makes it difficult to get data. Every row links to a new page with details about how many people were laid off at the company and there's no bulk download button. To collect data on a large scale, we'd have to undertake a lot of time-consuming, error-prone clicking around. 
+The website makes it difficult to get data. Every row links to a new page with details about how many people were laid off at the company, but there's no bulk download button. To collect data on a large scale, we'd have to undertake a lot of time-consuming, error-prone clicking around. 
 
-![*If I click on Yelp's company name, I see the detailed notice - 375 layoffs.*](yelp.png)
+![*If I click on Yelp, I see the detailed notice - 375 layoffs.*](yelp.png)
 
 
 But before we jump into scraping, let's examine the URL and the underlying data. 
-```{r, eval = FALSE}
 
-"https://www.azjobconnection.gov/ada/mn_warn_dsp.cfm?securitysys=on&start_row=26&max_rows=25&orderby=employer&choice=1"
+https://www.azjobconnection.gov/ada/mn_warn_dsp.cfm?securitysys=on&start_row=26&max_rows=25&orderby=employer&choice=1
 
-```
-
-When I page through the site, I see that a maximum of 25 layoffs can be displayed at one time. Typing over the 25 with a larger number doesn't change that. The website appears to be one giant table with many rows: Page 2 shows rows 26-50, for example, and page 3 shows 51-75. 
+When I page through the site, I see that a maximum of 25 layoff notices can be displayed at one time. The URL makes that clear: `max_rows` is set to 25. With some websites, typing over the 25 with a larger number will trick the system to display all the data, but here it doesn't work. The website appears to be one giant table divided into 25-row sections: Page 2 shows rows 26-50, for example, page 3 shows 51-75, and so on. 
 
 As of April 13, 2020, there are 420 rows - 420 layoff notices - spread over 17 pages.
 
@@ -64,7 +61,7 @@ choice = 1
 
 ```
 
-Right now, the data is sorted by employer name. I'll double-click the **Notice Date** column to make sure the most recent layoffs are shown first. This changes the `orderby` field to equal `noticeDateSort%20DESC`, which will be useful later on. When we come back to this exercise, for example, we might scrape only the most recent results.
+Right now, the data is sorted by employer name. I'll double-click the `Notice Date` column to make sure the most recent layoffs are shown first. This changes the `orderby` field to equal `noticeDateSort%20DESC`, which will be useful later on. When we come back to this exercise, for example, we might scrape only the most recent results.
 
 ![*Click the column header twice to arrange the most recent results first*](sortbyDate.png)
 
@@ -83,7 +80,7 @@ We'll scrape the site in two parts:
 
 We'll tackle this in a loop, one page at a time.
 
-I'll do a test run on the first page of results, saving the first page of results. I set the `start_row` equal to `1`, and changed the `orderby` header to sort descending by date:
+But first, let's do a test run on a single page of results. Notice how we can manipulate the URL: I'll set the `start_row` equal to `1` and change the `orderby` header to sort descending by date.
 
 ```{r, eval = FALSE, message = FALSE}
 
@@ -94,13 +91,13 @@ download.file( "https://www.azjobconnection.gov/ada/mn_warn_dsp.cfm?securitysys=
 
 If there's no error message, we should be in the clear. We can now write a loop to download all 17 pages of data, pausing for 1 second between each request.
 
-As we begin looping, we need only to change `start_row` - everything else in the URL stays the same. The code below shows how that works, saving each page to a folder called `warn_listing`:
+On each iteration of the code, we need only to change the `start_row`; everything else in the URL can stay the same. The code below shows how that works, saving each page to a folder called `warn_listing`:
 
 ```{r, eval = FALSE, message = FALSE}
 
 url <- "https://www.azjobconnection.gov/ada/mn_warn_dsp.cfm?securitysys=on&start_row=1&max_rows=25&orderby=noticeDateSort%20DESC&choice=1"
 
-# Get the pages: 
+# Get the pages, starting at page 2 since we saved the first page in the last step:
       for (p in  2:17) {
           
           # set new start row
@@ -123,7 +120,7 @@ url <- "https://www.azjobconnection.gov/ada/mn_warn_dsp.cfm?securitysys=on&start
 
 ### Parsing the data - setup
 
-The next task is to parse the data on every saved .html file using the rvest package. Here's how that might look on a single page, step by step:
+The next task is to parse the data on every saved html file using the rvest package. Here's how that might look on a single page, step by step:
 
 ```{r}
 
@@ -142,7 +139,7 @@ html_children( all_rows[ 3 ] ) # now we see <td> elements, or cells in a table
 
 ```
 
-We can scrap the first two rows and start looking for data in the third, one column at a time.
+We can start looking for data one column at a time.
 ```{r}
 
 n = length( all_rows )
@@ -156,7 +153,7 @@ html_node( data_rows[ 1 ], xpath = 'td[1]' ) %>% html_text( )
 Note: `html_table( )` is another neat command in rvest that converts html tables into dataframes. But since we need to get the URL in each row manually, it doesn't save us any time - we may as  well parse every column.
 
 ### Parsing the data in a loop
-We can automate the data parsing now that we understand the data structure on every page.
+We can automate the data parsing now that we understand how to access the data in each column.
 
 Begin by creating a table to hold our results:
 ```{r}
@@ -205,24 +202,24 @@ for ( p in 1:17 ) {
   
     j <- new_start_row + i - 1
     
-    row_data[ j, 1 ] <- paste0 ("page", sprintf( "%03d", p ), ".html")
+    row_data[ j, 1 ] <- paste0 ("page", sprintf( "%03d", p ), ".html") # col 1 = page_num
       
-    row_data[ j, 2 ] <- j
+    row_data[ j, 2 ] <- j # col 2 = row_num
       
     # quick two-step URL extraction
     row_url <- html_node( data_rows[ i ], xpath = "td[1]/span/a/@href" ) %>% html_text( )
     
-    row_data[ j, 3 ]  <- paste0( parent_url, str_extract( row_url, "^.{16}(id=)\\d{1,4}" ) )
+    row_data[ j, 3 ]  <- paste0( parent_url, str_extract( row_url, "^.{16}(id=)\\d{1,4}" ) ) # col 3 = full_link
       
-    row_data[ j, 4 ] <- html_node( data_rows[ i ], xpath = "td[1]" ) %>% html_text( )
+    row_data[ j, 4 ] <- html_node( data_rows[ i ], xpath = "td[1]" ) %>% html_text( ) # col 4 = company
       
-    row_data[ j, 5 ] <- html_node( data_rows[ i ], xpath = "td[2]" ) %>% html_text( )
+    row_data[ j, 5 ] <- html_node( data_rows[ i ], xpath = "td[2]" ) %>% html_text( ) # col 5 = co_hq_city
       
-    row_data[ j, 6 ] <- html_node( data_rows[ i ], xpath = "td[3]" ) %>% html_text( )
+    row_data[ j, 6 ] <- html_node( data_rows[ i ], xpath = "td[3]" ) %>% html_text( ) # col 6 = co_hq_zip
       
-    row_data[ j, 7 ] <- html_node( data_rows[ i ], xpath = "td[4]" ) %>% html_text( )
+    row_data[ j, 7 ] <- html_node( data_rows[ i ], xpath = "td[4]" ) %>% html_text( ) # col 7 = labor_area
       
-    row_data[ j, 8 ] <- html_node( data_rows[ i ], xpath="td[5]" ) %>% html_text( )
+    row_data[ j, 8 ] <- html_node( data_rows[ i ], xpath="td[5]" ) %>% html_text( ) # col 8 = notice_date_txt
       
   } 
   
@@ -246,7 +243,7 @@ warn_data <- row_data %>%
 ```
 
 And don't forget to save the results!
-```{r}
+```{r, warning = FALSE, message = FALSE}
 
 # save without overwriting past results
 date_curr = today( )
@@ -265,7 +262,7 @@ write_csv( warn_data, save_location )
 
 ```
 
-Half our work is done. Now let's prep for the next step: scraping the individual WARN URLs.
+Half our work is done. Now let's prep for the next step: scraping data from the detailed WARN notices. These are stored in a separate list of URLs and conveniently saved in our `warn_data` table in the `full_link` column.
 
 ## Part 2: Scraping the detailed layoff data
 
@@ -301,11 +298,11 @@ for ( u in 1:end ) {
 
 ### Parsing the data in a loop
 
-On this task, we don't need to do any manual parsing - so html_table will be a big help. All I'll do is pivot the data once it's parsed, and add an id column.
+On this task, we don't need to do any manual parsing - so `html_table( )` will be a big help. All we have to do is pivot the parsed data and add an `id` column.
 
-One additonal challenge is that I can't walk through the pages in a sequential order as I did before. I get around that using `list.files( )`, which lets me iterate through all the files in the folder.
+One additonal challenge is that we can't walk through the pages in a sequential order as we did before, since the pages are saved according to their WARN ID. We can get around that using `list.files( )`, which lets us iterate through all the html files in the folder.
 
-Just as before, I'll create a table to hold the data:
+Just as before, let's create a table to hold the data:
 ```{r}
 
 # define data frame
@@ -313,7 +310,7 @@ warn_detail <- tibble(
   
   page_name = character( ),
   row_num = numeric( ),
-  id = character( ), # there are no leading zeros, so treat it as a numeral
+  id = character( ),
   company = character( ),
   co_st_address = character( ),
   co_hq_city = character( ),
@@ -326,7 +323,7 @@ warn_detail <- tibble(
 
 ```
 
-Now begin the loop.
+Now begin the loop to parse the data. We'll store it in a table called `warn_detail`.
 ```{r}
 
 # create a list of files
@@ -386,7 +383,7 @@ for (i in 1:n ) {
 
 ```
 
-I'll save the results as a csv.
+Save the results as a csv:
 
 ```{r}
 
@@ -404,7 +401,7 @@ write_csv( warn_detail, save_location )
 
 ## Review
 
-Let's compile the two sets of data into one table about layoffs. I'll call it `warn_data_complete`:
+Let's combine the two sets of data - `warn_data` and `warn_detail` into one table about layoffs.
 ```{r}
 
 warn_data_complete <- warn_data %>% 
@@ -437,7 +434,7 @@ write_csv( warn_data_complete, save_location )
  
 We're done. Now, we have over 400 records of layoff notices dating back to 2010, which is when the first notice was posted online. We can group them together by month and year.
 
-Below is a list of monthly layoffs, ranked by most employees impacted. March 2020 tops the list by far; April is second on the list, though it's only halfway through. Putting the two months together, we can estimate that at 9,000 people have been impacted by layoffs or furloughs in Arizona since covid-19 has spread. It's a sobering record — and one that still leaves out entrepreneurs, small businesses and government employees on furlough.
+Below is a list of monthly layoffs, ranked by most employees impacted. March 2020 tops the list by far; April is second on the list, though it's only halfway through. Putting the two months together, we can estimate that about 9,000 people have been impacted by layoffs or furloughs in Arizona since covid-19 sparked a pandemic. It's a sobering record — and one that still leaves out entrepreneurs, small businesses and government employees on furlough.
 
 ``` {r }
 

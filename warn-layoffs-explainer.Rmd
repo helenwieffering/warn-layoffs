@@ -6,7 +6,8 @@ output:
   html_document:
     theme: sandstone
     highlight: haddock
-    df_print: paged
+    toc: true
+    toc_float: true
 ---
 
 ```{r, include=FALSE, message=FALSE}

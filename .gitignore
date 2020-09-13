@@ -3,12 +3,13 @@
 .RData
 .Ruserdata
 .DS_Store
-original-analysis.Rmd
+.yml
 
 # messy files during exploration phase
-nonwarn-scrape-part1.xlsx
+original-analysis.Rmd
 nonwarn-scrape-part2.Rmd
 warn-analysis-part1.xlsx
 warn-layoffs-original-assignment.Rmd
 warn-scrape-part1.html
 warn-scrape-part2.Rmd
+FIRSTATTEMPT*
